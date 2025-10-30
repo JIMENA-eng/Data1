@@ -145,64 +145,116 @@
             line-height: 1.6;
         }
     </style>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Regresión Exponencial - Crecimiento de Bacterias</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f7f7; padding: 30px; }
+    h1 { text-align: center; color: #333; }
+    #resultados { text-align: center; margin-top: 20px; }
+    canvas { max-width: 700px; margin: 30px auto; display: block; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Análisis de Regresión Exponencial</h1>
-        <p class="subtitle">Crecimiento de Población Bacteriana</p>
+  <h1>Crecimiento Bacteriano - Modelo Exponencial</h1>
 
-        <div class="models-grid">
-            <div class="model-card model1">
-                <h3>Modelo 1: Y = a·e^(bx)</h3>
-                <div class="parameter"><strong>a =</strong> {{ "%.4f"|format(model1_a) }}</div>
-                <div class="parameter"><strong>b =</strong> {{ "%.4f"|format(model1_b) }}</div>
-                <div class="equation">
-                    Y = {{ "%.4f"|format(model1_a) }} · e^({{ "%.4f"|format(model1_b) }}x)
-                </div>
-            </div>
+  <canvas id="grafico"></canvas>
+  <div id="resultados"></div>
 
-            <div class="model-card model2">
-                <h3>Modelo 2: Y = a·b^x</h3>
-                <div class="parameter"><strong>a =</strong> {{ "%.4f"|format(model2_a) }}</div>
-                <div class="parameter"><strong>b =</strong> {{ "%.4f"|format(model2_b) }}</div>
-                <div class="equation">
-                    Y = {{ "%.4f"|format(model2_a) }} · {{ "%.4f"|format(model2_b) }}^x
-                </div>
-            </div>
-        </div>
+  <script>
+    const urlCSV = "https://raw.githubusercontent.com/<TU_USUARIO>/<TU_REPO>/main/datos.csv";
 
-        <div class="predictions">
-            <h3>Predicciones de Población</h3>
-            <div class="pred-grid">
-                <div class="pred-card">
-                    <h4 style="color: #7c3aed;">Modelo 1 (Y = a·e^(bx))</h4>
-                    <div class="pred-value"><strong>t = 50s:</strong> {{ "%.2f"|format(pred_50_m1) }} bacterias</div>
-                    <div class="pred-value"><strong>t = 60s:</strong> {{ "%.2f"|format(pred_60_m1) }} bacterias</div>
-                </div>
-                <div class="pred-card">
-                    <h4 style="color: #059669;">Modelo 2 (Y = a·b^x)</h4>
-                    <div class="pred-value"><strong>t = 50s:</strong> {{ "%.2f"|format(pred_50_m2) }} bacterias</div>
-                    <div class="pred-value"><strong>t = 60s:</strong> {{ "%.2f"|format(pred_60_m2) }} bacterias</div>
-                </div>
-            </div>
-        </div>
+    async function cargarDatos() {
+      const resp = await fetch(urlCSV);
+      const texto = await resp.text();
+      const filas = texto.trim().split("\n").slice(1);
+      const x = [], y = [];
 
-        <div class="graph-container">
-            <h3>Gráfico 1: Datos Observados vs Modelo 1</h3>
-            <img src="data:image/png;base64,{{ graph1 }}" alt="Gráfico Modelo 1">
-        </div>
+      filas.forEach(fila => {
+        const [tiempo, bacterias] = fila.split(",").map(Number);
+        if (!isNaN(tiempo) && !isNaN(bacterias)) {
+          x.push(tiempo);
+          y.push(bacterias);
+        }
+      });
 
-        <div class="graph-container">
-            <h3>Gráfico 2: Datos Observados vs Modelo 2</h3>
-            <img src="data:image/png;base64,{{ graph2 }}" alt="Gráfico Modelo 2">
-        </div>
+      return { x, y };
+    }
 
-        <div class="note">
-            <h3>Nota Importante</h3>
-            <p>Ambos modelos son matemáticamente equivalentes ya que b^x = e^(x·ln(b)).
-            En este análisis, se utilizó regresión lineal sobre los datos transformados logarítmicamente
-            para estimar los parámetros de ambas ecuaciones exponenciales.</p>
-        </div>
-    </div>
+    // Ajuste exponencial: Y = a * e^(b*x)
+    function ajustarExponencial(x, y) {
+      const n = x.length;
+      const lnY = y.map(v => Math.log(v));
+
+      const sumX = x.reduce((a,b) => a+b, 0);
+      const sumLnY = lnY.reduce((a,b) => a+b, 0);
+      const sumX2 = x.reduce((a,b) => a+b*b, 0);
+      const sumXLnY = x.reduce((a,b,i) => a+b*lnY[i], 0);
+
+      const b = (n*sumXLnY - sumX*sumLnY) / (n*sumX2 - sumX**2);
+      const lnA = (sumLnY - b*sumX) / n;
+      const a = Math.exp(lnA);
+
+      return { a, b };
+    }
+
+    function predecir(a, b, t) {
+      return a * Math.exp(b * t);
+    }
+
+    async function main() {
+      const { x, y } = await cargarDatos();
+      const { a, b } = ajustarExponencial(x, y);
+
+      // Crear datos predichos para la curva
+      const xPred = [];
+      const yPred = [];
+      for (let i = Math.min(...x); i <= Math.max(...x); i += 1) {
+        xPred.push(i);
+        yPred.push(predecir(a, b, i));
+      }
+
+      const pred50 = predecir(a, b, 50);
+      const pred60 = predecir(a, b, 60);
+
+      document.getElementById("resultados").innerHTML = `
+        <p><strong>Modelo:</strong> Y = ${a.toFixed(3)} × e<sup>${b.toFixed(3)}·x</sup></p>
+        <p>Predicción a t = 50s: <b>${pred50.toFixed(2)}</b> bacterias</p>
+        <p>Predicción a t = 60s: <b>${pred60.toFixed(2)}</b> bacterias</p>
+      `;
+
+      new Chart(document.getElementById("grafico"), {
+        type: "scatter",
+        data: {
+          datasets: [
+            {
+              label: "Datos Observados",
+              data: x.map((xi, i) => ({ x: xi, y: y[i] })),
+              backgroundColor: "rgba(75, 192, 192, 0.7)"
+            },
+            {
+              label: "Modelo Exponencial",
+              data: xPred.map((xi, i) => ({ x: xi, y: yPred[i] })),
+              type: "line",
+              borderColor: "rgba(255, 99, 132, 0.9)",
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { title: { display: true, text: "Tiempo (s)" } },
+            y: { title: { display: true, text: "Cantidad de bacterias" } }
+          }
+        }
+      });
+    }
+
+    main();
+  </script>
 </body>
 </html>
+
