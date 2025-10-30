@@ -1,0 +1,244 @@
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter } from 'recharts';
+
+const BacterialGrowthAnalysis = () => {
+  const [data, setData] = useState([]);
+  const [model1, setModel1] = useState({ a: 0, b: 0 });
+  const [model2, setModel2] = useState({ a: 0, b: 0 });
+  const [predictions, setPredictions] = useState({ time50_m1: 0, time60_m1: 0, time50_m2: 0, time60_m2: 0 });
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const fileContent = await window.fs.readFile('data1.csv', { encoding: 'utf8' });
+        const lines = fileContent.trim().split('\n');
+        const parsed = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(';');
+          if (parts.length >= 2 && parts[0] && parts[1]) {
+            const time = parseFloat(parts[0].trim());
+            const pop = parseFloat(parts[1].trim());
+            if (!isNaN(time) && !isNaN(pop)) {
+              parsed.push({ time, population: pop });
+            }
+          }
+        }
+        
+        setData(parsed);
+        
+        // Calcular regresión para Y = a*e^(bx)
+        const n = parsed.length;
+        let sumX = 0, sumLnY = 0, sumXLnY = 0, sumX2 = 0;
+        
+        parsed.forEach(d => {
+          const lnY = Math.log(d.population);
+          sumX += d.time;
+          sumLnY += lnY;
+          sumXLnY += d.time * lnY;
+          sumX2 += d.time * d.time;
+        });
+        
+        const b1 = (n * sumXLnY - sumX * sumLnY) / (n * sumX2 - sumX * sumX);
+        const lnA1 = (sumLnY - b1 * sumX) / n;
+        const a1 = Math.exp(lnA1);
+        
+        setModel1({ a: a1, b: b1 });
+        
+        // Calcular regresión para Y = a*b^x (convertir a forma logarítmica)
+        const b2_base = Math.exp(b1);
+        const a2 = a1;
+        
+        setModel2({ a: a2, b: b2_base });
+        
+        // Predicciones
+        const pred50_m1 = a1 * Math.exp(b1 * 50);
+        const pred60_m1 = a1 * Math.exp(b1 * 60);
+        const pred50_m2 = a2 * Math.pow(b2_base, 50);
+        const pred60_m2 = a2 * Math.pow(b2_base, 60);
+        
+        setPredictions({
+          time50_m1: pred50_m1,
+          time60_m1: pred60_m1,
+          time50_m2: pred50_m2,
+          time60_m2: pred60_m2
+        });
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  const generateFittedData = () => {
+    if (data.length === 0) return [];
+    
+    const fitted = [];
+    for (let t = 1; t <= 150; t += 2) {
+      fitted.push({
+        time: t,
+        observed: data.find(d => d.time === t)?.population || null,
+        model1: model1.a * Math.exp(model1.b * t),
+        model2: model2.a * Math.pow(model2.b, t)
+      });
+    }
+    return fitted;
+  };
+
+  const fittedData = generateFittedData();
+
+  return (
+    <div className="w-full max-w-7xl mx-auto p-6 bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <h1 className="text-3xl font-bold text-indigo-900 mb-2">
+          Análisis de Regresión Exponencial
+        </h1>
+        <p className="text-gray-600 mb-4">Crecimiento de Población Bacteriana</p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-gradient-to-br from-purple-100 to-purple-50 p-5 rounded-lg border-2 border-purple-300">
+            <h3 className="text-xl font-bold text-purple-900 mb-3">Modelo 1: Y = a·e^(bx)</h3>
+            <div className="space-y-2 text-gray-800">
+              <p className="font-mono text-lg">
+                <span className="font-semibold">a =</span> {model1.a.toFixed(4)}
+              </p>
+              <p className="font-mono text-lg">
+                <span className="font-semibold">b =</span> {model1.b.toFixed(4)}
+              </p>
+              <div className="mt-4 pt-4 border-t-2 border-purple-300">
+                <p className="font-semibold text-purple-900 mb-2">Ecuación:</p>
+                <p className="font-mono text-base bg-white p-2 rounded">
+                  Y = {model1.a.toFixed(4)} · e^({model1.b.toFixed(4)}x)
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-green-100 to-green-50 p-5 rounded-lg border-2 border-green-300">
+            <h3 className="text-xl font-bold text-green-900 mb-3">Modelo 2: Y = a·b^x</h3>
+            <div className="space-y-2 text-gray-800">
+              <p className="font-mono text-lg">
+                <span className="font-semibold">a =</span> {model2.a.toFixed(4)}
+              </p>
+              <p className="font-mono text-lg">
+                <span className="font-semibold">b =</span> {model2.b.toFixed(4)}
+              </p>
+              <div className="mt-4 pt-4 border-t-2 border-green-300">
+                <p className="font-semibold text-green-900 mb-2">Ecuación:</p>
+                <p className="font-mono text-base bg-white p-2 rounded">
+                  Y = {model2.a.toFixed(4)} · {model2.b.toFixed(4)}^x
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-100 to-orange-50 p-5 rounded-lg border-2 border-amber-400 mb-6">
+          <h3 className="text-xl font-bold text-amber-900 mb-4">Predicciones de Población</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white p-4 rounded-lg shadow">
+              <h4 className="font-bold text-purple-900 mb-3">Modelo 1 (Y = a·e^(bx))</h4>
+              <p className="text-gray-800 mb-1">
+                <span className="font-semibold">t = 50s:</span> {predictions.time50_m1.toFixed(2)} bacterias
+              </p>
+              <p className="text-gray-800">
+                <span className="font-semibold">t = 60s:</span> {predictions.time60_m1.toFixed(2)} bacterias
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+              <h4 className="font-bold text-green-900 mb-3">Modelo 2 (Y = a·b^x)</h4>
+              <p className="text-gray-800 mb-1">
+                <span className="font-semibold">t = 50s:</span> {predictions.time50_m2.toFixed(2)} bacterias
+              </p>
+              <p className="text-gray-800">
+                <span className="font-semibold">t = 60s:</span> {predictions.time60_m2.toFixed(2)} bacterias
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">
+            Gráfico 1: Datos Observados vs Modelo 1 (Y = a·e^(bx))
+          </h3>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={fittedData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="time" 
+                label={{ value: 'Tiempo (segundos)', position: 'insideBottom', offset: -5 }}
+              />
+              <YAxis 
+                label={{ value: 'Población de Bacterias', angle: -90, position: 'insideLeft' }}
+              />
+              <Tooltip />
+              <Legend />
+              <Scatter 
+                data={data} 
+                dataKey="population" 
+                name="Datos Observados"
+                fill="#8b5cf6"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="model1" 
+                stroke="#7c3aed" 
+                strokeWidth={3}
+                name="Modelo 1: Y = a·e^(bx)"
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">
+            Gráfico 2: Datos Observados vs Modelo 2 (Y = a·b^x)
+          </h3>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={fittedData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="time" 
+                label={{ value: 'Tiempo (segundos)', position: 'insideBottom', offset: -5 }}
+              />
+              <YAxis 
+                label={{ value: 'Población de Bacterias', angle: -90, position: 'insideLeft' }}
+              />
+              <Tooltip />
+              <Legend />
+              <Scatter 
+                data={data} 
+                dataKey="population" 
+                name="Datos Observados"
+                fill="#10b981"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="model2" 
+                stroke="#059669" 
+                strokeWidth={3}
+                name="Modelo 2: Y = a·b^x"
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+        <h3 className="text-xl font-bold text-gray-800 mb-3">Nota Importante</h3>
+        <p className="text-gray-700 leading-relaxed">
+          Ambos modelos son matemáticamente equivalentes ya que b^x = e^(x·ln(b)). 
+          En este análisis, se utilizó regresión lineal sobre los datos transformados logarítmicamente 
+          para estimar los parámetros de ambas ecuaciones exponenciales.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default BacterialGrowthAnalysis;
